@@ -23,6 +23,16 @@
 #define LDR_R1    1E6                           // resistor R1 do div. de tensao com LDR
 //#define LDR_R1    1E3                           // resistor R1 do div. de tensao com LDR
 
+
+#define LDR_RDARK 1E6                           // LDR const. resistencia no escuro
+//#define LDR_RDARK 2E6                           // LDR const. resistencia no escuro
+#define LDR_A     2.24                          // LDR const. material
+//#define LDR_A     0.9                          // LDR const. material
+#define LDR_A     1.0                          // LDR const. material
+//#define LDR_R1    1E6                           // resistor R1 do div. de tensao com LDR
+#define LDR_R1    1E3                          // resistor R1 do div. de tensao com LDR
+
+
 // ========== Mapeamento de portas =========
 #define LDR_PIN 15                             // porta sensor LDR
 #define PWM_PIN 17                              // porta PWM - saida do controlador / LEDs
@@ -85,7 +95,7 @@ void readLDR(double *fluxo){                     // ponteiro para passar fluxo p
   
   #ifdef DEBUG_LDR
   
-    if(millis() - runtime > 5000){              // imprime flux em lux a cada 1s
+    if(millis() - runtime > 1000){              // imprime flux em lux a cada 1s
       Serial.print("\n\n\nFluxo luminoso: ");
       Serial.print(*fluxo);
       Serial.println(" lux");
