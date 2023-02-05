@@ -14,27 +14,36 @@
 
 // ========== INCLUSAO DAS BIBLIOTECAS =====
 #include<WiFi.h>                                // lib. para conexao WI-FI
+#include <esp_adc_cal.h>            
 
 
 // ========== Macros e constantes ==========
 
-#define LDR_RDARK 1E6                           // LDR const. resistencia no escuro
-#define LDR_A     2.24                          // LDR const. material
-#define LDR_R1    1E6                           // resistor R1 do div. de tensao com LDR
-//#define LDR_R1    1E3                           // resistor R1 do div. de tensao com LDR
+#define LDR_RDARK 5E6                           // LDR const. resistencia no escuro
+#define LDR_A     0.85                          // LDR const. material
+#define LDR_R1    2.2E3                         // resistor R1 do div. de tensao com LDR
+
+#define N_MEDIA   5                             // quantidade de medicoes para media
+#define AMOST     5                             // intervalo entre amostras do LDR em mili segs
+
+//#define LDR_RDARK 6E6                           // LDR const. resistencia no escuro
+//#define LDR_A     0.795                          // LDR const. material
+//#define LDR_R1    2.2E3                        // resistor R1 do div. de tensao com LDR
 
 
-#define LDR_RDARK 1E6                           // LDR const. resistencia no escuro
-//#define LDR_RDARK 2E6                           // LDR const. resistencia no escuro
-#define LDR_A     2.24                          // LDR const. material
-//#define LDR_A     0.9                          // LDR const. material
-#define LDR_A     1.0                          // LDR const. material
-//#define LDR_R1    1E6                           // resistor R1 do div. de tensao com LDR
-#define LDR_R1    1E3                          // resistor R1 do div. de tensao com LDR
+
+
+//#define LDR_RDARK 1E6                           // LDR const. resistencia no escuro
+////#define LDR_RDARK 2E6                           // LDR const. resistencia no escuro
+//#define LDR_A     2.24                          // LDR const. material
+////#define LDR_A     0.9                          // LDR const. material
+//#define LDR_A     1.0                          // LDR const. material
+////#define LDR_R1    1E6                           // resistor R1 do div. de tensao com LDR
+//#define LDR_R1    1E3                          // resistor R1 do div. de tensao com LDR
 
 
 // ========== Mapeamento de portas =========
-#define LDR_PIN 15                             // porta sensor LDR
+#define LDR_PIN 34                             // porta sensor LDR
 #define PWM_PIN 17                              // porta PWM - saida do controlador / LEDs
 
 // ========== redefinicao de tipo ==========
@@ -49,7 +58,8 @@ int     runtime   = 0;                          // tempo atual de exec. do siste
 
 
 // ========== Prototipos das Funcoes ========
-void readLDR(float *fluxo);                     // funcao para calcular fluxo lum, em tempo real
+                                                // funcao para calcular fluxo lum, em tempo real
+void readLDR(float *fluxo, u_int16 nMedia, u_int16 intv);
 
 
 
@@ -59,16 +69,19 @@ void readLDR(float *fluxo);                     // funcao para calcular fluxo lu
 // ========== Configuracoes iniciais ========
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin(9600);                           // iniciando serial/UART
+  Serial.begin(115200);                         // iniciando serial/UART
   
-
+  analogSetClockDiv(ADC_ATTEN_DB_11);           // seta atenuacao dos canais
+  adcAttachPin(LDR_PIN);                        // pino do canal LDR
+  analogSetWidth(12);                           // res. 12 bits do ADC          
+  
 }
 
 // ========== Codigo principal ==============
 void loop() {
   // put your main code here, to run repeatedly:
 
-  readLDR(&fluxoLum);                           // leitura do sensor LDR
+  readLDR(&fluxoLum, N_MEDIA, AMOST);           // leitura do sensor LDR: var. com fluxo, quantidade de medicoeses, intervalo entre elas
 
 
 
@@ -76,22 +89,31 @@ void loop() {
 
 // ========== Desenvolv. das funcoes ========
                                                 // funcao para calcular fluxo lum. em tempo real
-void readLDR(double *fluxo){                     // ponteiro para passar fluxo por  referencia
-
+void readLDR(double *fluxo, u_int16 nMedia, u_int16 intv){
+                                                    
   double v_LDR = 0,
-        r_LDR = 0,
-        i_LDR = 0;
+         r_LDR = 0,
+         i_LDR = 0;
         
-  v_LDR = analogRead(LDR_PIN) * (3.3/4095);     // leitura ADC 12 bits do sensor LDR
+  u_int32 runMedia = 0;                         // var. para controlar tempo de intervalo de medicoes
 
-  // terminar código - precisa ajustar para medir resistencia 
-  i_LDR = (3.3-v_LDR)/LDR_R1;
-  //r_LDR = v_LDR/LDR_R1;
+                                                // calculo de media do sinal ADC
+  for(int i = 0; i < nMedia ; i++){
+    
+    v_LDR += analogRead(LDR_PIN) * (3.3/4095);  // leitura ADC 12 bits do sensor LDR    
+    
+    runMedia = millis();                        // atualizando tempo atual de exec do sistema
+    while(millis() - runMedia < intv){          // loop até atualizacao do tempo
+      continue;
+    }
+    
+  }
 
-  r_LDR = v_LDR*(LDR_R1/(3.3 - v_LDR));
-  i_LDR = v_LDR/r_LDR;
+  v_LDR /= nMedia;                              // calculo da media de tensao do ADC
+  r_LDR = v_LDR*(LDR_R1/(3.3 - v_LDR));         // calculo da resist. do LDR - div. ten.
+  i_LDR = (v_LDR/r_LDR) * 1000;                 // calculo da corren.
   
-  *fluxo = pow((LDR_RDARK/r_LDR),(1.0/LDR_A));  // equacao da relacao resistencia por lumens
+  *fluxo = pow((LDR_RDARK/r_LDR),(LDR_A));      // equacao da relacao resistencia por lumens;
   
   #ifdef DEBUG_LDR
   
@@ -102,13 +124,14 @@ void readLDR(double *fluxo){                     // ponteiro para passar fluxo p
       Serial.print("Tensao ADC: ");
       Serial.println(v_LDR);
       Serial.print("Corrente ADC: ");
-      Serial.println(i_LDR);
+      Serial.print(i_LDR,4);
+      Serial.println(" mA");
       Serial.print("Resistencia ADC: ");
       Serial.println(r_LDR);
       Serial.print("ADC bits: ");
       Serial.print(analogRead(LDR_PIN));
-      
 
+      
       runtime = millis();
       
     }
@@ -116,3 +139,8 @@ void readLDR(double *fluxo){                     // ponteiro para passar fluxo p
   #endif
   
 }
+
+/*
+ * LINKS UTEIS
+ * https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/api/adc.html
+*/
