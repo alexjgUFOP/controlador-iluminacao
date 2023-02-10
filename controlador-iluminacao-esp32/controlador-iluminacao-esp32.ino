@@ -26,6 +26,11 @@
 #define N_MEDIA   5                             // quantidade de medicoes para media
 #define AMOST     5                             // intervalo entre amostras do LDR em mili segs
 
+
+#define PWM_FREQ  5E3                           // PWM FREQ.
+#define PWM_CH    0                             // PWM canal
+#define PWM_RES   12                            // PWM resolucao
+
 //#define LDR_RDARK 6E6                           // LDR const. resistencia no escuro
 //#define LDR_A     0.795                          // LDR const. material
 //#define LDR_R1    2.2E3                        // resistor R1 do div. de tensao com LDR
@@ -43,8 +48,8 @@
 
 
 // ========== Mapeamento de portas =========
-#define LDR_PIN 34                             // porta sensor LDR
-#define PWM_PIN 17                              // porta PWM - saida do controlador / LEDs
+#define LDR_PIN 34                              // porta sensor LDR
+#define PWM_PIN 32                              // porta PWM - saida do controlador / LEDs
 
 // ========== redefinicao de tipo ==========
 typedef unsigned char u_int8;                   // var. int. de  8 bits nao sinalizada
@@ -59,8 +64,8 @@ int     runtime   = 0;                          // tempo atual de exec. do siste
 
 // ========== Prototipos das Funcoes ========
                                                 // funcao para calcular fluxo lum, em tempo real
-void readLDR(float *fluxo, u_int16 nMedia, u_int16 intv);
-
+void readLDR(double *fluxo, u_int16 nMedia, u_int16 intv);
+void ctrlIlum(double fluxo);                    // controlador de iluminacao                               
 
 
 // ========== Declaracao dos objetos ========
@@ -74,7 +79,9 @@ void setup() {
   analogSetClockDiv(ADC_ATTEN_DB_11);           // seta atenuacao dos canais
   adcAttachPin(LDR_PIN);                        // pino do canal LDR
   analogSetWidth(12);                           // res. 12 bits do ADC          
-  
+
+  ledcSetup(PWM_CH, PWM_FREQ, PWM_RES);         // configuração do LED PWM
+  ledcAttachPin(PWM_PIN, PWM_CH);               // associacao do LED com PWM
 }
 
 // ========== Codigo principal ==============
@@ -82,7 +89,7 @@ void loop() {
   // put your main code here, to run repeatedly:
 
   readLDR(&fluxoLum, N_MEDIA, AMOST);           // leitura do sensor LDR: var. com fluxo, quantidade de medicoeses, intervalo entre elas
-
+  ctrlIlum(fluxoLum);
 
 
 }
@@ -114,9 +121,9 @@ void readLDR(double *fluxo, u_int16 nMedia, u_int16 intv){
   i_LDR = (v_LDR/r_LDR) * 1000;                 // calculo da corren.
   
   *fluxo = pow((LDR_RDARK/r_LDR),(LDR_A));      // equacao da relacao resistencia por lumens;
-  
+  #undef DEGUG_LDR
   #ifdef DEBUG_LDR
-  
+  Serial.print(*fluxo);
     if(millis() - runtime > 1000){              // imprime flux em lux a cada 1s
       Serial.print("\n\n\nFluxo luminoso: ");
       Serial.print(*fluxo);
@@ -140,7 +147,37 @@ void readLDR(double *fluxo, u_int16 nMedia, u_int16 intv){
   
 }
 
+                                                // funcao do controlador de iluminacao
+void ctrlIlum(double fluxo){                     
+
+  static u_int16 dc = 0;                                // duty cicle do PWM
+  
+  if(fluxo < 100)
+    dc = 4095;
+  else if(fluxo < 400)
+    dc = 2048;
+  else
+    dc = 0;
+
+  ledcWrite(PWM_CH, dc);
+
+  #ifdef DEBUG_CTRL
+  
+    if(millis() - runtime > 1000){              // imprime flux em lux a cada 1s
+      Serial.print("\n\n\nDuty Cicle: ");
+      Serial.print(dc);
+      
+     //runtime = millis();
+      
+    }
+    
+  #endif
+  
+}
+
+
 /*
  * LINKS UTEIS
  * https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/api/adc.html
+ * https://randomnerdtutorials.com/esp32-pwm-arduino-ide/
 */
