@@ -7,12 +7,16 @@
 */
 
 // ========== HABILITANDO MODO DEBUG =======
-#define DEBUG_LDR                               // apenas para testes
-#define DEBUG_CTRL                              // apenas para testes
+//#define DEBUG_LDR                               // apenas para testes
+//#define DEBUG_CTRL                              // apenas para testes
+#define DEBUG_SERIAL                              // apenas para testes
+#define DEBUG_WEB                              // apenas para testes
+
 
 
 // ========== INCLUSAO DAS BIBLIOTECAS =====
 #include<WiFi.h>                                // lib. para conexao WI-FI
+#include <ESPAsyncWebServer.h>                  // lib. para web server assincrono
 #include <esp_adc_cal.h>            
 
 
@@ -23,12 +27,16 @@
 #define LDR_R1    2.2E3                         // resistor R1 do div. de tensao com LDR
 
 #define N_MEDIA   5                             // quantidade de medicoes para media
-#define AMOST     5                             // intervalo entre amostras do LDR em mili segs
+#define AMOST     10                            // intervalo entre amostras do LDR em mili segs
 
 
 #define PWM_FREQ  5E3                           // PWM FREQ.
 #define PWM_CH    0                             // PWM canal
 #define PWM_RES   12                            // PWM resolucao
+
+#define WEB_PORT  8080                          // porta do servidor WEB
+
+#define PRINT_MAX 30                            // tamanho max. de mensagens
 
 //#define LDR_RDARK 6E6                           // LDR const. resistencia no escuro
 //#define LDR_A     0.795                          // LDR const. material
@@ -50,6 +58,7 @@
 #define LDR_PIN 34                              // porta sensor LDR
 #define PWM_PIN 32                              // porta PWM - saida do controlador / LEDs
 
+
 // ========== redefinicao de tipo ==========
 typedef unsigned char u_int8;                   // var. int. de  8 bits nao sinalizada
 typedef unsigned int  u_int16;                  // var. int. de 16 bits nao sinalizada
@@ -57,18 +66,180 @@ typedef unsigned long u_int32;                  // var. int. de 32 bits nao sina
 
 
 // ========== Variaveis globais ============
-double  fluxoLum  = 0;                          // fluxo luminoso em lumens
-int     runtime   = 0;                          // tempo atual de exec. do sistema
+double  fluxoLum           = 0;                 // fluxo luminoso em lumens
+u_int16 dutyPWM            = 0;                 // duty cycle PWM
+int     runtime            = 0;                 // tempo atual de exec. do sistema
+char    message[PRINT_MAX] = "";
+
+
+// ========== Constantes ===================
+const char* wifi_ssid   = "R.port_acess";       // SSID rede wifi
+const char* wifi_passwd = "tplink123";          // senha rede wifi
 
 
 // ========== Prototipos das Funcoes ========
                                                 // funcao para calcular fluxo lum, em tempo real
 void readLDR(double *fluxo, u_int16 nMedia, u_int16 intv);
-void ctrlIlum(double fluxo);                    // controlador de iluminacao                               
+void ctrlIlum(double fluxo, u_int16 *dc);       // controlador de iluminacao                               
+void wifiConnect();                             // realizacao autenticao na rede sem Wi-Fi
+
+
+// ========== Código da Pagina Web ==========
+const char index_html[] PROGMEM = R"rawliteral(
+<html>
+  <!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.5.0/Chart.min.js"></script>
+</head>
+<body>
+
+  <body>
+    <h1>Controlador de Iluminação - Dashboard</h1>
+    
+    <div id="graph">
+      <canvas id="myChart"></canvas>
+    </div>
+
+    <div class="setpoint">
+      <label for="html">Lúmens desejado: </label>
+      <input type="text" id="fluxoLum" value="HTML">
+    </div>
+
+    <div class="controlador">
+        <div class="">
+          <label for="html">Kp</label>
+          <input type="text" id="Kp" value="HTML">
+        </div>
+        <div class="">
+          <label for="html">Ki</label>
+          <input type="text" id="Ki" value="HTML">
+        </div>
+        <div class="">
+          <label for="html">Kd</label>
+          <input type="text" id="Kd" value="HTML">
+        </div>
+        <div class="">
+          <input type="submit" value="Submit">
+        </div>      
+        
+      
+    
+    </div>
+    
+
+  </body>
+
+  <script>
+  
+    function addValue(datasetN, xVal,yVal){
+      myChart.data.datasets[datasetN].data.push(yVal);
+      myChart.data.labels.push(xVal);
+      myChart.update();
+    }
+  
+    function delValue(datasetN, maxItem){
+  
+      if (myChart.data.labels.length > maxItem){       
+        myChart.data.datasets[datasetN].data.shift();
+        myChart.data.labels.shift();
+        myChart.update();
+      }
+    }
+  
+    function xTime(){
+      const date = new Date();
+      return date.getHours().toString() + ":" + date.getMinutes().toString() + ":" + date.getSeconds().toString();
+  
+    }
+    
+    const maxItemsGraph = 200;
+    const graphFluxLum = 0;
+    var xValues = [100,200,300,400,500,600,700,800,900,1000];
+    var yValues = [860,1140,1060,1060,1070,1110,1330,2210,7830,2478];
+
+    const ctx = document.getElementById('myChart');
+
+    const myChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{
+          label: "Fluxo (lx)",
+          data: [],
+          borderColor: "red",
+          fill: false
+        }]
+      },
+      options: {
+        title: {
+          display: true,
+          text: 'Gráfico de Fluxo Luminoso',
+        },
+        legend: {display: true}
+      }
+    });
+
+
+
+  setInterval(
+    function() 
+    {
+  
+      
+
+      // tratando GET REQUEST do cliente
+      var xhttp = new XMLHttpRequest();
+      xhttp.onreadystatechange = function() 
+      {
+        if (this.readyState == 4 && this.status == 200){
+          //document.getElementById("fluxoLum").innerHTML = this.responseText;
+
+          // tratando string recebida - nao usa json
+          let text = this.responseText;
+          let message  = text.split(",");
+          let fluxoLum = message[0];
+          let dutyPWM  = message[1];
+          
+          console.log(fluxoLum);
+          
+          // atualizando gráfico
+          addValue(graphFluxLum, xTime(),fluxoLum);
+          delValue(graphFluxLum,maxItemsGraph);
+          
+        }
+          
+      };
+      xhttp.open("GET", "/fluxo", true);
+      xhttp.send();
+
+      
+  
+      console.log("send data");
+  
+      // HANDLE HTTP REQUEST
+  
+      // POST REQUEST
+  
+      var xhttp = new XMLHttpRequest();
+  
+  }, 500 );
+
+  
+
+
+  </script>
+
+</html>
+)rawliteral";
+
 
 
 // ========== Declaracao dos objetos ========
+AsyncWebServer server(WEB_PORT);                // objeto Web Server na porta 80
 
+// ========== Declaracao dos objetos ========
 
 // ========== Configuracoes iniciais ========
 void setup() {
@@ -81,6 +252,21 @@ void setup() {
 
   ledcSetup(PWM_CH, PWM_FREQ, PWM_RES);         // configuração do LED PWM
   ledcAttachPin(PWM_PIN, PWM_CH);               // associacao do LED com PWM
+
+  #ifdef DEBUG_WEB
+    wifiConnect();                                // conecta na rede Wi-Fi
+  
+                                                  // atualizando o web server assinc.
+                
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+             {  request->send_P(200, "text/html", index_html);  }); // Envia a resposta
+  
+    server.on("/fluxo", HTTP_GET, [](AsyncWebServerRequest *request)
+             {  request->send_P(200, "text/plain", message);   });           
+    
+    server.begin();                               //inicializa o servidor web
+  #endif
+  
 }
 
 // ========== Codigo principal ==============
@@ -88,8 +274,13 @@ void loop() {
   // put your main code here, to run repeatedly:
 
   readLDR(&fluxoLum, N_MEDIA, AMOST);           // leitura do sensor LDR: var. com fluxo, quantidade de medicoeses, intervalo entre elas
-  ctrlIlum(fluxoLum);
+  ctrlIlum(fluxoLum, &dutyPWM);                 // controlador de ilum - recebe fluxo e atualizada duty cicle por ponteiro na funcao
 
+  #ifdef DEBUG_SERIAL
+                                                // formatacao de mensagem para impressao na serial
+    snprintf (message, PRINT_MAX, "%.2f,%d", fluxoLum, dutyPWM );
+    Serial.println(message);                    
+  #endif
 
 }
 
@@ -147,24 +338,22 @@ void readLDR(double *fluxo, u_int16 nMedia, u_int16 intv){
 }
 
                                                 // funcao do controlador de iluminacao
-void ctrlIlum(double fluxo){                     
-
-  static u_int16 dc = 0;                                // duty cicle do PWM
+void ctrlIlum(double fluxo, u_int16 *dc){       // fluxo e duty cycle
   
   if(fluxo < 100)
-    dc = 4095;
+    *dc = 4095;
   else if(fluxo < 400)
-    dc = 2048;
+    *dc = 2048;
   else
-    dc = 0;
+    *dc = 0;
 
-  ledcWrite(PWM_CH, dc);
+  ledcWrite(PWM_CH, *dc);
 
   #ifdef DEBUG_CTRL
   
     if(millis() - runtime > 1000){              // imprime flux em lux a cada 1s
       Serial.print("\n\n\nDuty Cicle: ");
-      Serial.print(dc);
+      Serial.print(*dc);
       
      //runtime = millis();
       
@@ -173,10 +362,31 @@ void ctrlIlum(double fluxo){
   #endif
   
 }
+                                                // realizacao autenticao na rede sem Wi-Fi
+void wifiConnect(){                             
+  Serial.println();                      
+  Serial.print("Conectando-se a ");      
+  Serial.println(wifi_ssid);                  
+  WiFi.begin(wifi_ssid, wifi_passwd);           // autenticacao na rede Wi-Fi
+
+  while(WiFi.status() != WL_CONNECTED)          // aguarda conexão   
+  {
+    delay(555);                          
+    Serial.print(".");                          
+  }
+
+  Serial.println("");                           
+  Serial.println("WiFi conectada");      
+  Serial.println("Endereço de IP: ");    
+  Serial.println(WiFi.localIP());               
+
+}
+
 
 
 /*
  * LINKS UTEIS
  * https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/api/adc.html
  * https://randomnerdtutorials.com/esp32-pwm-arduino-ide/
+ * https://blog.eletrogate.com/webserver-assincrono-com-esp32/
 */
