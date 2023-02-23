@@ -1,0 +1,127 @@
+<html>
+  <head>
+    <title></title>
+    <meta content="">
+    <style></style>
+
+    <!-- Chart Js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js"></script>
+
+  </head>
+  <body>
+    <h1>Controlador de Iluminação - Dashboard</h1>
+    
+    <div id="graph">
+      <canvas id="myChart"></canvas>
+    </div>
+
+    <div class="setpoint">
+      <label for="html">Lúmens desejado: </label>
+      <input type="text" id="fluxoLum" value="HTML">
+    </div>
+
+    <div class="controlador">
+        <div class="">
+          <label for="html">Kp</label>
+          <input type="text" id="Kp" value="HTML">
+        </div>
+        <div class="">
+          <label for="html">Ki</label>
+          <input type="text" id="Ki" value="HTML">
+        </div>
+        <div class="">
+          <label for="html">Kd</label>
+          <input type="text" id="Kd" value="HTML">
+        </div>
+        <div class="">
+          <input type="submit" value="Submit">
+        </div>      
+        
+      
+    
+    </div>
+    
+
+  </body>
+
+  <script>
+
+    
+    const maxItemsGraph = 200;
+    const graphFluxLum = 0;
+    var xValues = [100,200,300,400,500,600,700,800,900,1000];
+    var yValues = [860,1140,1060,1060,1070,1110,1330,2210,7830,2478];
+
+    const ctx = document.getElementById('myChart');
+
+    const myChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{
+          label: "Fluxo (lx)",
+          data: [],
+          borderColor: "red",
+          fill: false
+        }]
+      },
+      options: {
+        title: {
+          display: true,
+          text: 'Gráfico de Fluxo Luminoso',
+        },
+        legend: {display: true}
+      }
+    });
+
+    var x = 10;
+
+
+  setInterval(
+  function() 
+  {
+
+    x+=x;
+
+    addValue(graphFluxLum, xTime(),Math.floor(Math.random() * 1000));
+    delValue(graphFluxLum,maxItemsGraph);
+
+    console.log("send data");
+
+    // HANDLE HTTP REQUEST
+
+    // POST REQUEST
+
+    var xhttp = new XMLHttpRequest();
+
+    
+
+    
+      
+
+  }, 500 );
+
+  function addValue(datasetN, xVal,yVal){
+    myChart.data.datasets[datasetN].data.push(yVal);
+    myChart.data.labels.push(xVal);
+    myChart.update();
+  }
+
+  function delValue(datasetN, maxItem){
+
+    if (myChart.data.labels.length > maxItem){       
+      myChart.data.datasets[datasetN].data.shift();
+      myChart.data.labels.shift();
+      myChart.update();
+    }
+  }
+
+  function xTime(){
+    const date = new Date();
+    return date.getHours().toString() + ":" + date.getMinutes().toString() + ":" + date.getSeconds().toString();
+
+  }
+
+  </script>
+
+</html>
