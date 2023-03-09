@@ -278,7 +278,7 @@ void loop() {
 
   #ifdef DEBUG_SERIAL
                                                 // formatacao de mensagem para impressao na serial
-    snprintf (message, PRINT_MAX, "%.2f,%d", fluxoLum, dutyPWM );
+    snprintf (message, PRINT_MAX, "%.2f,%d,%d", fluxoLum, dutyPWM, millis() );
     Serial.println(message);                    
   #endif
 
@@ -311,7 +311,8 @@ void readLDR(double *fluxo, u_int16 nMedia, u_int16 intv){
   i_LDR = (v_LDR/r_LDR) * 1000;                 // calculo da corren.
   
   *fluxo = pow((LDR_RDARK/r_LDR),(LDR_A));      // equacao da relacao resistencia por lumens;
-  #undef DEGUG_LDR
+
+  
   #ifdef DEBUG_LDR
   Serial.print(*fluxo);
     if(millis() - runtime > 1000){              // imprime flux em lux a cada 1s
@@ -340,10 +341,16 @@ void readLDR(double *fluxo, u_int16 nMedia, u_int16 intv){
                                                 // funcao do controlador de iluminacao
 void ctrlIlum(double fluxo, u_int16 *dc){       // fluxo e duty cycle
   
-  if(fluxo < 100)
+//  
+//  if(fluxo < 100)
+//    *dc = 4095;
+//  else if(fluxo < 400)
+//    *dc = 2048;
+//  else
+//    *dc = 0;
+
+  if(millis() - runtime > 10000)
     *dc = 4095;
-  else if(fluxo < 400)
-    *dc = 2048;
   else
     *dc = 0;
 
